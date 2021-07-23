@@ -25,10 +25,38 @@ import java.awt.{BasicStroke, Color, RenderingHints}
 import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream, FileInputStream, FileOutputStream}
 import javax.imageio.ImageIO
 import scala.collection.immutable.IndexedSeq as Vec
+import scala.language.implicitConversions
 
 object Neural:
+  val baseDir = file("/data/projects/BookOfX")
+
   def main(args: Array[String]): Unit =
-    println("Hello")
+    for idx <- 1 to 505 do
+      val c = Config(
+        imgInTemp   = baseDir / "sonograms" / "kreuzen-%d-sono.png",
+        imgOutTemp  = baseDir / "render"    / "kreuzen-%d-sono-gng.png",
+        gngOutTemp  = baseDir / "gng"       / "kreuzen-%d-sono.gng",
+        invertPD    = true,
+        maxNodes    = 5000,
+        gngStepSize = 500,  // 500 is maximum
+        gngUtility  = 5.0,
+        gngLambda   = 200,
+        gngEdgeAge  = 800,
+        gngEpsilon  = 1.0e-3,
+        gngEpsilon2 = 1.0e-4,
+        gngAlpha    = 0.8,
+        gngBeta     = 5.0e-6,
+        startInIdx  = idx,
+        endInIdx    = idx,
+        startOutIdx = idx,
+        rngSeed     = idx,
+        repeat      = 5000,
+        frameStep   = 1,
+      )
+      val t1 = System.currentTimeMillis()
+      run(c)
+      val t2 = System.currentTimeMillis()
+      println(s" for index $idx, took ${(t2-t1+500)/1000} s.")
 
   def formatTemplate(temp: File, n: Int): File =
     temp.replaceName(temp.name.format(n))
@@ -321,9 +349,11 @@ object Neural:
                      maxNodes       : Envelope  = 4000,
                      startInIdx     : Int       = 1,
                      endInIdx       : Int       = -1,
+                     startOutIdx    : Int       = 1,
                      skipFrames     : Int       = 0,
                      frameStep      : Int       = 10,
                      holdFirst      : Int       = 0,
+                     repeat         : Int       = 1,
                    ):
     def formatImgIn (frame: Int): File = formatTemplate(imgInTemp , frame)
     def formatImgOut(frame: Int): File = formatTemplate(imgOutTemp, frame)
@@ -388,8 +418,10 @@ object Neural:
 
     val frameInIndices0 = Vector.fill(holdFirst)(startInIdx) ++ (startInIdx to endInIdx1) :+ endInIdx1
     val frameInIndices  = if holdFirst == 0 then frameInIndices0 else Vector.fill(holdFirst)(startInIdx) ++ frameInIndices0
-    var frameOutIdx     = 1
+    var frameOutIdx     = startOutIdx
+    var frameOutCnt     = 0
     val numOutFrames    = (frameInIndices.size - 1) * frameStep
+    val numOutRep       = numOutFrames.toLong * repeat
     println(s"numOutFrames = $numOutFrames")
 
     def fillParams(frame: Int): Unit =
@@ -487,13 +519,26 @@ object Neural:
           c.panelWidth  = w
           c.panelHeight = h
 
-          c.learn(res)
+          if repeat == 1 then c.learn(res)
+          else
+            var fi = frameOutCnt.toLong * repeat * 100
+            for i <- 0 until repeat do
+              c.learn(res)
+              val progress: Int = (fi / numOutRep).toInt
+              if lastProgress < progress then
+                while lastProgress < progress do
+                  print('#')
+                  lastProgress += 1
+              end if
+              fi += 100
+
           writeGNG(c, fGNG)
 
         if !hasImage && !isSkip then
           renderImage(config, c = c, fImgOut = fImgOut, quiet = true)
 
-        val progress: Int = (frameOutIdx * 100) / numOutFrames
+        frameOutCnt += 1
+        val progress: Int = (frameOutCnt * 100) / numOutFrames
         if lastProgress < progress then
           while lastProgress < progress do
             print('#')
