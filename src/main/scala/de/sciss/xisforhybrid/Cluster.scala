@@ -17,7 +17,7 @@ import breeze.linalg.DenseMatrix
 import de.sciss.cluster.STSC
 import de.sciss.file.*
 import de.sciss.lucre.store.BerkeleyDB
-import de.sciss.lucre.{DoubleVector, Folder, StringObj}
+import de.sciss.lucre.{DoubleVector, Folder, IntVector, Obj, StringObj}
 import de.sciss.numbers.Implicits.*
 import de.sciss.proc.Implicits.*
 import de.sciss.proc.{Durable, FScape, SoundProcesses, Workspace}
@@ -29,12 +29,15 @@ import scala.collection.immutable.IndexedSeq as Vec
 
 object Cluster:
   def main(args: Array[String]): Unit =
-    if !CORR_FILE.isFile then obtainCoefficients()
+    if !CORR_FILE .isFile then obtainCoefficients()
+    if !SHIFT_FILE.isFile then obtainShifts()
     run()
 
-  private val COOKIE_CORR = 0x436f7272
+  private val COOKIE_CORR   = 0x436f7272
+  private val COOKIE_SHIFT  = 0x53686674
 
   private val CORR_FILE   = file("correlations.bin")
+  private val SHIFT_FILE  = file("shifts.bin")
 
   val NUM_IMAGES = 4
   val NUM_LAYERS = 16
@@ -107,6 +110,32 @@ object Cluster:
     val unique = select.flatten.filterNot(_ == -1)
     assert (unique == unique.distinct)
 
+    println("Shifts:")
+    val shiftSq = loadShifts()
+    val imgShifts0 = select.map { img =>
+      val imgF = img.filterNot(_ == -1)
+      val imgS = imgF.toSet
+      img.map { li =>
+        if li == -1 then Int.MaxValue else
+          val others = imgS - li
+          val dSq = others.map { that =>
+            val i = math.min(li, that)
+            val j = math.max(li, that) - (i + 1)
+            val d = shiftSq(i)(j)
+            if i == li then -d else +d
+          }
+          ((dSq.sum.toDouble / others.size) * 0.5 + 0.5).toInt
+      }
+    }
+    val minShift  = imgShifts0.flatten.filterNot(_ == Int.MaxValue).min
+    val imgShifts = imgShifts0.map { img =>
+      img.map {
+        case Int.MaxValue => 0
+        case x            => x - minShift
+      }
+    }
+    println(imgShifts.map(_.mkString("[", ", ", "]")).mkString("\n"))
+
   end run
 
   def loadCoefficients(): Vec[Vec[Double]] =
@@ -120,16 +149,38 @@ object Cluster:
       }
     finally in.close()
 
+  def loadShifts(): Vec[Vec[Int]] =
+    val in = DataInput.open(SHIFT_FILE)
+    try
+      require (in.readInt() == COOKIE_SHIFT)
+      val numChildren = in.readShort()
+      Vector.fill(numChildren) {
+        val lineSz = in.readShort()
+        Vector.fill(lineSz)(in.readShort().toInt)
+      }
+    finally in.close()
+
+  type T = Durable.Txn
+
+  def obtainShifts(): Unit =
+    obtainFromWorkspace(cookie = COOKIE_SHIFT, outF = SHIFT_FILE) { implicit tx =>
+      child => child.attr.$[IntVector]("shift").fold(Vector.empty)(_.value.map(_.toShort))
+    } { (out, a) => out.writeShort(a) }
+
   def obtainCoefficients(): Unit =
+    obtainFromWorkspace(cookie = COOKIE_CORR, outF = CORR_FILE) { implicit tx =>
+      child => child.attr.$[DoubleVector]("corr").fold(Vector.empty)(_.value.map(_.toFloat))
+    } { (out, a) => out.writeFloat(a) }
+
+  def obtainFromWorkspace[A](cookie: Int, outF: File)(getSq: T => Obj[T] => Vec[A])(writeElem: (DataOutput, A) => Unit) : Unit =
     Locale.setDefault(Locale.US)
     SoundProcesses.init()
     FScape        .init()
 
-    val f   = file("/data/projects/BookOfX/workspaces/sonograms.mllt")
-    val dsf = BerkeleyDB.factory(f, createIfNecessary = false)
-    val ws  = Workspace.Durable.read(f.toURI, dsf)
-    type T  = Durable.Txn
-    val data: Vec[Vec[Float]] = try
+    val wsF = file("/data/projects/BookOfX/workspaces/sonograms.mllt")
+    val dsf = BerkeleyDB.factory(wsF, createIfNecessary = false)
+    val ws  = Workspace.Durable.read(wsF.toURI, dsf)
+    val data: Vec[Vec[A]] = try
       ws.cursor.step { implicit tx =>
         val fSub = ws.root.$[Folder]("correlation").get
         val numChilden = fSub.size
@@ -138,25 +189,22 @@ object Cluster:
             val nameExp = s"kreuzen-${ci + 1}-sono.png"
             val name    = child.value
             require (name == nameExp, s"$name != $nameExp")
-            val sq      = child.attr.$[DoubleVector]("corr").fold(Vector.empty)(_.value)
+            val sq      = getSq(tx)(child) // child.attr.$[DoubleVector](key).fold(Vector.empty)(_.value)
             require (sq.size == numChilden - ci - 1)
-  //          val sqS     = sq.map("%g".format(_))
-  //          val sqG     = sqS.grouped(8)
-  //          sqG.map { line => line.mkString("  ", ", ", "") } .mkString("  Vector(\n    ", "\n    ", "\n),")
-            sq.map(_.toFloat)
+            sq
         } .toVector // .mkString("val corr: Vec[Vec[Double]] =\n", "\n", "")
       }
     finally ws.close()
 
-    val out = DataOutput.open(CORR_FILE)
+    val out = DataOutput.open(outF)
     try
-      out.writeInt(COOKIE_CORR)
+      out.writeInt(cookie)
       out.writeShort(data.size)
       data.foreach { ln =>
         out.writeShort(ln.size)
-        ln.foreach(out.writeFloat)
+        ln.foreach(writeElem(out, _))
       }
 
     finally out.close()
 
-  end obtainCoefficients
+  end obtainFromWorkspace
