@@ -42,6 +42,21 @@ Shifts:
 Each two adjacent layers are grouped with the bottom layer "normal", the top layer "divide". "Missing layers"
 (index -1) are represented by matte white.
 All layer groups are composed through "multiply". GIMP data type is 32-bit float (only here does
-the divide do something strange). After flattening, 'CIE Ich Noise' with parameters
+the divide do something strange). 
+
+Version "n3": After flattening, 'CIE Ich Noise' with parameters
 (Duling -> 2), (Lightness -> 25), (Chroma -> 25), (Hue -> 3) and (Random Seed -> <image-index+1>) is added.
 Then a black/white threshold at 0.15 is applied, before converting to binary bitmap.
+
+Version "gamma4": After flattening, open 'Color Levels', and set gamma to 4.0.
+Downscaling from 600 dpi to 300 dpi gives much softer and brighter image in ink-jet print, capturing well
+the materiality of the ink. 600 dpi prints are way too dark.
+
+## caption
+
+X is for Hybrid. The German word “kreuzen” means to cross or to hybridise. When spoken – ˈkʁɔɪ̯t͡sn̩ –  the sonogram
+of this word has a cross shape itself with both a temporal and a spectral stop gap, creating four quadrants: a 
+crossing means two things meet and depart, both become transformed. The graphics are based on hundreds of recorded 
+instances of the word, each revealing a slightly different articulation. The corpus is clustered into four 
+quadrants and a subset of each cluster is composited after rendering each individual using the Growing Neural 
+Gas algorithm, which imposes its own characteristics.

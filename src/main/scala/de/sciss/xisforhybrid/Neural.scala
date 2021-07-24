@@ -31,7 +31,9 @@ object Neural:
   val baseDir = file("/data/projects/BookOfX")
 
   def main(args: Array[String]): Unit =
-    for idx <- 1 to 505 do
+    val argIdx    = args.indexOf("--start") + 1
+    val startIdx  = if argIdx > 0 && argIdx < args.length then args(argIdx).toInt else 1
+    for idx <- startIdx to 505 do
       val c = Config(
         imgInTemp   = baseDir / "sonograms" / "kreuzen-%d-sono.png",
         imgOutTemp  = baseDir / "render"    / "kreuzen-%d-sono-gng.png",
