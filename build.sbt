@@ -16,6 +16,7 @@ lazy val root = project.in(file("."))
       "de.sciss"            %% "fileutil"             % deps.main.fileUtil,       // utility functions
       "de.sciss"            %% "fscape-lucre"         % deps.main.fscape,         // DSP
       "de.sciss"            %% "lucre-expr"           % deps.main.lucre,          // control programs
+      "de.sciss"            %% "lucre-bdb"            % deps.main.lucre,          // data store
       "de.sciss"            %% "kollflitz"            % deps.main.kollFlitz,      // collection utilities
       "de.sciss"            %  "neuralgas-core"       % deps.main.neuralGas,      // topological learning
       "de.sciss"            %% "numbers"              % deps.main.numbers,        // numeric utilities
