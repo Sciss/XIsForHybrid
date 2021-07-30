@@ -15,7 +15,7 @@ package de.sciss.xisforhybrid
 
 import de.sciss.file.*
 import de.sciss.kollflitz.Ops.*
-import de.sciss.neuralgas.{Algorithm, ComputeGNG, EdgeGNG, ImagePD, NodeGNG, PD}
+import de.sciss.neuralgas.{Algorithm, ComputeGNG, EdgeGNG, GrayImagePD, ImagePD, NodeGNG, PD}
 import de.sciss.synth.Curve
 import de.sciss.{kollflitz, neuralgas, numbers}
 
@@ -38,7 +38,7 @@ object Neural:
         imgInTemp   = baseDir / "sonograms" / "kreuzen-%d-sono.png",
         imgOutTemp  = baseDir / "render"    / "kreuzen-%d-sono-gng.png",
         gngOutTemp  = baseDir / "gng"       / "kreuzen-%d-sono.gng",
-        invertPD    = true,
+        invertPD    = false,
         maxNodes    = 5000,
         gngStepSize = 500,  // 500 is maximum
         gngUtility  = 5.0,
@@ -337,6 +337,7 @@ object Neural:
                      widthOut       : Int       = 0,
                      heightOut      : Int       = 0,
                      invertPD       : Boolean   = false,
+                     grayPD         : Boolean   = false,
                      invertImgOut   : Boolean   = false,
                      strokeWidth    : Double    = 2.0,
                      gngStepSize    : Envelope  = 27,
@@ -410,7 +411,7 @@ object Neural:
     require (formatImgIn(startInIdx).isFile)
     require (formatImgIn (0) != formatImgIn (1), "Input  image template does not specify frame index")
     require (formatImgOut(0) != formatImgOut(1), "Output image template does not specify frame index")
-    require (formatGNGOut(0) != formatGNGOut(1), "Output GNG   template does not specify frame index")
+    require (gngOutTemp == null || formatGNGOut(0) != formatGNGOut(1), "Output GNG   template does not specify frame index")
     val endInIdx1       = if endInIdx >= 0 then endInIdx else
       val numImages = Iterator.from(startInIdx).indexWhere { idx =>
         val f = formatImgIn(idx)
@@ -449,7 +450,7 @@ object Neural:
       c.alphaGNG        = vAlpha   .clip(0f, 1f)
       c.setBetaGNG(vBeta.clip(0f, 1f))
       c.noNewNodesGNGB  = false
-      c.GNG_U_B         = true
+      c.GNG_U_B         = vUtility > 0.0 // true
       c.utilityGNG      = vUtility
       c.autoStopB       = false
 
@@ -481,7 +482,7 @@ object Neural:
         else
           val imgInF  = formatImgIn(imgFloorIdx)
           imgFloor    = ImageIO.read(imgInF)
-          pdFloor     = new ImagePD(imgFloor, !invertPD)
+          pdFloor     = if grayPD then new GrayImagePD(imgFloor, !invertPD) else new ImagePD(imgFloor, !invertPD)
 
       if imgCeilIdx != frameInCeil then
         imgCeilIdx  = frameInCeil
@@ -491,12 +492,12 @@ object Neural:
         else
           val imgInF  = formatImgIn(imgCeilIdx)
           imgCeil     = ImageIO.read(imgInF)
-          pdCeil      = new ImagePD(imgCeil, !invertPD)
+          pdCeil      = if grayPD then new GrayImagePD(imgCeil, !invertPD) else new ImagePD(imgCeil, !invertPD)
 
       for fStep <- 0 until frameStep do
-        val fGNG      = formatGNGOut(frameOutIdx)
+        val fGNG      = if gngOutTemp == null then null else formatGNGOut(frameOutIdx)
         val fImgOut   = formatImgOut(frameOutIdx)
-        val hasGNG    = fGNG    .length() > 0
+        val hasGNG    = fGNG != null && fGNG.length() > 0
         val hasImage  = fImgOut .length() > 0L
         val isSkip    = frameOutIdx <= skipFrames
 
@@ -504,7 +505,7 @@ object Neural:
           cValid = false
           rnd.setSeed(rnd.nextLong()) // XXX TODO --- should store a recoverable seed
 
-        if (!hasGNG || !hasImage) && !cValid && !isSkip then
+        if (!hasGNG || !hasImage) && !cValid && !isSkip && gngOutTemp != null then
           val fGNGPrev = formatGNGOut(frameOutIdx - 1)
           readGNG(c, fGNGPrev)
           cValid = true
@@ -534,7 +535,7 @@ object Neural:
               end if
               fi += 100
 
-          writeGNG(c, fGNG)
+          if (gngOutTemp != null) writeGNG(c, fGNG)
 
         if !hasImage && !isSkip then
           renderImage(config, c = c, fImgOut = fImgOut, quiet = true)
