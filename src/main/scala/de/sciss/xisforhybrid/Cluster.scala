@@ -111,6 +111,12 @@ object Cluster:
     assert (unique == unique.distinct)
 
     println("Shifts:")
+    val imgShifts = calcShifts(select)
+    println(imgShifts.map(_.mkString("[", ", ", "]")).mkString("\n"))
+
+  end run
+
+  def calcShifts(select: Vec[Vec[Int]]): Vec[Vec[Int]] =
     val shiftSq = loadShifts()
     val imgShifts0 = select.map { img =>
       val imgF = img.filterNot(_ == -1)
@@ -134,9 +140,8 @@ object Cluster:
         case x            => x - minShift
       }
     }
-    println(imgShifts.map(_.mkString("[", ", ", "]")).mkString("\n"))
-
-  end run
+    imgShifts
+  end calcShifts
 
   def loadCoefficients(): Vec[Vec[Double]] =
     val in = DataInput.open(CORR_FILE)
